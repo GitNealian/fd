@@ -73,17 +73,27 @@ func validate(clientId, tokenEncrypted string) (bool, error) {
 	return err == nil, err
 }
 
+func hasIP(ip string) bool {
+	for _, v := range CLIENTS {
+		if ip == v {
+			return true
+		}
+	}
+	return false
+}
+
 func addRule(clientId, ip string) error {
 	// remove old ip rule
-	if ip_old, ok := CLIENTS[clientId]; ok {
-		err := exec.Command("firewall-cmd", fmt.Sprintf(`--permanent --remove-rich-rule="rule family="ipv4" source address="%s" accept"`, ip_old)).Run()
+	ip_old, ok := CLIENTS[clientId]
+	CLIENTS[clientId] = ip
+	if ok && !hasIP(ip_old) {
+		err := exec.Command("firewall-cmd", "--permanent", fmt.Sprintf(`--remove-rich-rule=rule family="ipv4" source address="%s" accept`, ip_old)).Run()
 		if err != nil {
 			return err
 		}
 	}
-	CLIENTS[clientId] = ip
 	// add new ip rule
-	err := exec.Command("firewall-cmd", fmt.Sprintf(`--permanent --add-rich-rule="rule family="ipv4" source address="%s" accept"`, ip)).Run()
+	err := exec.Command("firewall-cmd", "--permanent", fmt.Sprintf(`--add-rich-rule=rule family="ipv4" source address="%s" accept`, ip)).Run()
 	if err != nil {
 		return err
 	}
@@ -150,7 +160,12 @@ func main() {
 		}
 		ok, err := validate(clientId, sig)
 		if err == nil && ok {
-			addRule(clientId, c.ClientIP())
+			err = addRule(clientId, c.ClientIP())
+			if err != nil {
+				fmt.Println(err.Error())
+				c.JSON(500, gin.H{"msg": err.Error()})
+				return
+			}
 			c.JSON(200, gin.H{
 				"message": "success",
 			})
